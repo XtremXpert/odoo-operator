@@ -380,6 +380,14 @@ pub struct OdooInstanceSpec {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub config_options: Option<std::collections::BTreeMap<String, String>>,
 
+    /// Extra INI sections rendered into `odoo.conf` after `[options]`,
+    /// e.g. `sentry: {sentry_dsn: "...", sentry_enabled: "true"}`.
+    /// Needed by addons that read their settings from a dedicated
+    /// section (`[sentry]`, `[server_environment]`, ...) rather than
+    /// from `[options]`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config_sections: Option<std::collections::BTreeMap<String, std::collections::BTreeMap<String, String>>>,
+
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub database: Option<DatabaseSpec>,
 

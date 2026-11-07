@@ -541,6 +541,7 @@ pub async fn ensure_config_map(
         pg.port,
         &db,
         &instance.spec.config_options,
+        &instance.spec.config_sections,
     );
 
     let cm = ConfigMap {

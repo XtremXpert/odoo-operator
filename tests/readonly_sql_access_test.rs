@@ -31,6 +31,7 @@ fn make_instance_with_ro(ro_enabled: bool, connection_limit: i32) -> OdooInstanc
             resources: None,
             filestore: None,
             config_options: None,
+            config_sections: None,
             database: Some(DatabaseSpec {
                 cluster: None,
                 name: Some("odoo_ae819407_a467_4155_b2b2_8f38c400fb1f".to_string()),
@@ -79,6 +80,7 @@ fn make_instance_no_ro() -> OdooInstance {
             resources: None,
             filestore: None,
             config_options: None,
+            config_sections: None,
             database: None,
             init: Default::default(),
             environment: Default::default(),
