@@ -47,6 +47,7 @@ fn make_instance(extra_env: Vec<EnvVar>, extra_env_from: Vec<EnvFromSource>) -> 
             resources: None,
             filestore: None,
             config_options: None,
+            config_sections: None,
             database: None,
             init: Default::default(),
             environment: Default::default(),

@@ -78,6 +78,7 @@ fn test_build_odoo_conf_contains_required_keys() {
         5432,
         "odoo_db",
         &None,
+        &None,
     );
 
     assert!(conf.starts_with("[options]\n"));
@@ -99,7 +100,7 @@ fn test_build_odoo_conf_with_extra_options() {
         ("max_cron_threads".to_string(), "1".to_string()),
     ]));
 
-    let conf = build_odoo_conf("u", "p", "a", "h", 5432, "d", &extra);
+    let conf = build_odoo_conf("u", "p", "a", "h", 5432, "d", &extra, &None);
 
     assert!(conf.contains("workers = 4\n"));
     assert!(conf.contains("max_cron_threads = 1\n"));
@@ -107,7 +108,7 @@ fn test_build_odoo_conf_with_extra_options() {
 
 #[test]
 fn test_build_odoo_conf_prepends_standard_addons_path() {
-    let conf = build_odoo_conf("u", "p", "a", "h", 5432, "d", &None);
+    let conf = build_odoo_conf("u", "p", "a", "h", 5432, "d", &None, &None);
     // The standard addons paths should be prepended.
     assert!(
         conf.contains("addons_path = /opt/odoo/addons,/opt/odoo/odoo/addons,/mnt/extra-addons\n")
@@ -116,7 +117,7 @@ fn test_build_odoo_conf_prepends_standard_addons_path() {
 
 #[test]
 fn test_build_odoo_conf_empty_admin_password_omitted() {
-    let conf = build_odoo_conf("u", "p", "", "h", 5432, "d", &None);
+    let conf = build_odoo_conf("u", "p", "", "h", 5432, "d", &None, &None);
     assert!(!conf.contains("admin_passwd"));
 }
 
@@ -146,6 +147,7 @@ fn make_instance(uid: Option<&str>, db_name: Option<&str>) -> OdooInstance {
             resources: None,
             filestore: None,
             config_options: None,
+            config_sections: None,
             database: db_name.map(|n| DatabaseSpec {
                 cluster: None,
                 name: Some(n.to_string()),
@@ -178,4 +180,24 @@ fn test_db_name_falls_back_to_uid() {
 fn test_db_name_uses_custom_name() {
     let inst = make_instance(Some("abc-123-def"), Some("my_custom_db"));
     assert_eq!(db_name(&inst), "my_custom_db");
+}
+
+#[test]
+fn test_build_odoo_conf_with_extra_sections() {
+    let sections = Some(std::collections::BTreeMap::from([(
+        "sentry".to_string(),
+        std::collections::BTreeMap::from([
+            ("sentry_dsn".to_string(), "https://key@example.com/1".to_string()),
+            ("sentry_enabled".to_string(), "true".to_string()),
+        ]),
+    )]));
+
+    let conf = build_odoo_conf("u", "p", "a", "h", 5432, "d", &None, &sections);
+
+    assert!(conf.contains("\n[sentry]\n"));
+    assert!(conf.contains("sentry_dsn = https://key@example.com/1\n"));
+    assert!(conf.contains("sentry_enabled = true\n"));
+    // [options] must stay first and closed before the new section.
+    assert!(conf.starts_with("[options]\n"));
+    assert!(conf.find("[sentry]").unwrap() > conf.find("list_db").unwrap());
 }

@@ -35,6 +35,7 @@ fn make_instance(name: &str, ro: Option<ReadOnlySqlAccessSpec>) -> OdooInstance 
             resources: None,
             filestore: None,
             config_options: None,
+            config_sections: None,
             database: None,
             init: Default::default(),
             environment: Default::default(),
