@@ -409,7 +409,8 @@ pub struct OdooInstanceSpec {
     /// section (`[sentry]`, `[server_environment]`, ...) rather than
     /// from `[options]`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub config_sections: Option<std::collections::BTreeMap<String, std::collections::BTreeMap<String, String>>>,
+    pub config_sections:
+        Option<std::collections::BTreeMap<String, std::collections::BTreeMap<String, String>>>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub database: Option<DatabaseSpec>,

@@ -187,7 +187,10 @@ fn test_build_odoo_conf_with_extra_sections() {
     let sections = Some(std::collections::BTreeMap::from([(
         "sentry".to_string(),
         std::collections::BTreeMap::from([
-            ("sentry_dsn".to_string(), "https://key@example.com/1".to_string()),
+            (
+                "sentry_dsn".to_string(),
+                "https://key@example.com/1".to_string(),
+            ),
             ("sentry_enabled".to_string(), "true".to_string()),
         ]),
     )]));
