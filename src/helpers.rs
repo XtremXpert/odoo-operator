@@ -145,6 +145,10 @@ pub fn sha256_hex(input: &str) -> String {
 // ── odoo.conf generation ──────────────────────────────────────────────────────
 
 /// Build the content of odoo.conf.
+// The generated file is one flat list of settings; keeping them as
+// parameters rather than a struct keeps the call sites explicit, and this
+// mirrors how the function grew historically.
+#[allow(clippy::too_many_arguments)]
 pub fn build_odoo_conf(
     username: &str,
     password: &str,
