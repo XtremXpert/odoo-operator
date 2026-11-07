@@ -145,6 +145,10 @@ pub fn sha256_hex(input: &str) -> String {
 // ── odoo.conf generation ──────────────────────────────────────────────────────
 
 /// Build the content of odoo.conf.
+// The generated file is one flat list of settings; keeping them as
+// parameters rather than a struct keeps the call sites explicit, and this
+// mirrors how the function grew historically.
+#[allow(clippy::too_many_arguments)]
 pub fn build_odoo_conf(
     username: &str,
     password: &str,
@@ -153,6 +157,7 @@ pub fn build_odoo_conf(
     db_port: i32,
     db_name: &str,
     extra: &Option<BTreeMap<String, String>>,
+    sections: &Option<BTreeMap<String, BTreeMap<String, String>>>,
 ) -> String {
     let mut options = BTreeMap::new();
     options.insert("data_dir", "/var/lib/odoo".to_string());
@@ -222,6 +227,16 @@ pub fn build_odoo_conf(
     for (key, val) in &options {
         if !written.contains(&key[..]) {
             out.push_str(&format!("{key} = {val}\n"));
+        }
+    }
+
+    // Extra INI sections (e.g. `[sentry]`), rendered after `[options]`.
+    if let Some(sections) = sections {
+        for (name, values) in sections {
+            out.push_str(&format!("\n[{name}]\n"));
+            for (key, val) in values {
+                out.push_str(&format!("{key} = {val}\n"));
+            }
         }
     }
 

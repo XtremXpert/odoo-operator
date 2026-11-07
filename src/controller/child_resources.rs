@@ -674,6 +674,7 @@ pub async fn ensure_odoo_conf_secret(
         pg.port,
         &db,
         &instance.spec.config_options,
+        &instance.spec.config_sections,
     );
 
     let entries = [
