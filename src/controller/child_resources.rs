@@ -7,7 +7,7 @@
 use std::collections::BTreeMap;
 
 use k8s_openapi::api::{
-    apps::v1::{Deployment, DeploymentSpec, DeploymentStrategy},
+    apps::v1::{Deployment, DeploymentSpec, DeploymentStrategy, RollingUpdateDeployment},
     batch::v1::Job,
     core::v1::{
         ConfigMap, Container, ContainerPort, EnvVar, ExecAction, HTTPGetAction,
@@ -972,16 +972,7 @@ pub async fn ensure_deployment(
         .as_deref()
         .unwrap_or(&ctx.defaults.odoo_image);
 
-    let strategy_type = instance
-        .spec
-        .strategy
-        .as_ref()
-        .map(|s| &s.strategy_type)
-        .unwrap_or(&DeploymentStrategyType::Recreate);
-    let k8s_strategy = match strategy_type {
-        DeploymentStrategyType::Recreate => "Recreate",
-        DeploymentStrategyType::RollingUpdate => "RollingUpdate",
-    };
+    let (k8s_strategy, k8s_rolling_update) = deployment_strategy(instance.spec.strategy.as_ref());
 
     let probe_startup = instance
         .spec
@@ -1044,7 +1035,7 @@ pub async fn ensure_deployment(
             },
             strategy: Some(DeploymentStrategy {
                 type_: Some(k8s_strategy.to_string()),
-                ..Default::default()
+                rolling_update: k8s_rolling_update,
             }),
             template: PodTemplateSpec {
                 metadata: Some(ObjectMeta {
@@ -1562,9 +1553,84 @@ pub async fn delete_readonly_role(
     }
 }
 
+/// Deployment strategy for an instance.
+///
+/// `spec.strategy.rollingUpdate` is validated by the CRD, so a value there is a
+/// promise: honour it. It used to be dropped on the floor, the Deployment always
+/// carrying the API defaults (25% / 25%). With one replica those defaults happen
+/// to round to maxSurge=1 / maxUnavailable=0 — which is why nobody noticed — but
+/// any explicit value was silently ignored.
+fn deployment_strategy(
+    strategy: Option<&crate::crd::odoo_instance::StrategySpec>,
+) -> (String, Option<RollingUpdateDeployment>) {
+    let strategy_type = strategy
+        .map(|s| &s.strategy_type)
+        .unwrap_or(&DeploymentStrategyType::Recreate);
+    match strategy_type {
+        DeploymentStrategyType::Recreate => ("Recreate".to_string(), None),
+        DeploymentStrategyType::RollingUpdate => (
+            "RollingUpdate".to_string(),
+            Some(RollingUpdateDeployment {
+                max_surge: strategy
+                    .and_then(|s| s.rolling_update.as_ref())
+                    .map(|ru| IntOrString::String(ru.max_surge.clone())),
+                max_unavailable: strategy
+                    .and_then(|s| s.rolling_update.as_ref())
+                    .map(|ru| IntOrString::String(ru.max_unavailable.clone())),
+            }),
+        ),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::master_password_line;
+    use super::{deployment_strategy, master_password_line};
+    use crate::crd::odoo_instance::{DeploymentStrategyType, RollingUpdateSpec, StrategySpec};
+    use k8s_openapi::apimachinery::pkg::util::intstr::IntOrString;
+
+    #[test]
+    fn default_strategy_is_recreate() {
+        let (kind, rolling) = deployment_strategy(None);
+        assert_eq!(kind, "Recreate");
+        assert!(rolling.is_none());
+    }
+
+    #[test]
+    fn rolling_update_degrades_to_recreate_settings_when_absent() {
+        // No rollingUpdate block: leave the API defaults in charge.
+        let strategy = StrategySpec {
+            strategy_type: DeploymentStrategyType::RollingUpdate,
+            rolling_update: None,
+        };
+        let (kind, rolling) = deployment_strategy(Some(&strategy));
+        assert_eq!(kind, "RollingUpdate");
+        let rolling = rolling.expect("rolling update strategy");
+        assert!(rolling.max_surge.is_none());
+        assert!(rolling.max_unavailable.is_none());
+    }
+
+    #[test]
+    fn rolling_update_honours_max_surge_and_max_unavailable() {
+        // The CR validated these values, so the Deployment must carry them.
+        let strategy = StrategySpec {
+            strategy_type: DeploymentStrategyType::RollingUpdate,
+            rolling_update: Some(RollingUpdateSpec {
+                max_surge: "1".to_string(),
+                max_unavailable: "0".to_string(),
+            }),
+        };
+        let (kind, rolling) = deployment_strategy(Some(&strategy));
+        assert_eq!(kind, "RollingUpdate");
+        let rolling = rolling.expect("rolling update strategy");
+        assert_eq!(
+            rolling.max_surge,
+            Some(IntOrString::String("1".to_string()))
+        );
+        assert_eq!(
+            rolling.max_unavailable,
+            Some(IntOrString::String("0".to_string()))
+        );
+    }
 
     #[test]
     fn master_password_from_secret_must_be_one_line() {
