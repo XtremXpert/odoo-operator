@@ -637,7 +637,22 @@ async fn reconcile_instance(instance: &OdooInstance, ctx: &Context) -> Result<Ac
     let selector = format!("app={name}");
 
     let cur = instance.status.as_ref();
+    // `observedGeneration` doit compter parmi les changements : une livraison
+    // de staging ne change QUE l'image, donc rien d'autre ici. Sans lui, le
+    // statut n'était pas réécrit, la condition Ready restait sur la génération
+    // précédente, et le script de la CI qui attend
+    // `observedGeneration >= generation` concluait à l'échec après dix minutes
+    // — alors que le déploiement était en place et le pod prêt. Constaté le
+    // 2026-11-14 sur cite/diverse-odoo (génération 171, condition à 170).
+    let generation = instance.metadata.generation;
+    let condition_generation = cur.and_then(|s| {
+        s.conditions
+            .iter()
+            .find(|c| c.type_ == "Ready")
+            .and_then(|c| c.observed_generation)
+    });
     let status_changed = active_cluster_changed
+        || condition_generation != generation
         || !cur.is_some_and(|s| {
             s.ready_replicas == snapshot.ready_replicas
                 && s.ready == ready
