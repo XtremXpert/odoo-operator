@@ -126,6 +126,13 @@ spec:
               jobName:
                 nullable: true
                 type: string
+              logTail:
+                description: |-
+                  Tail of the job pod's logs, captured once the job is terminal.
+
+                  The pod lives and dies with its Job, and the operator prunes terminal job CRs. Without this, the only evidence of a failed module update — the SQL error, the migration traceback — is gone before anyone can read it. Bounded so the CRD stays small.
+                nullable: true
+                type: string
               message:
                 nullable: true
                 type: string

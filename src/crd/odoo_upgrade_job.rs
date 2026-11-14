@@ -55,6 +55,15 @@ pub struct OdooUpgradeJobStatus {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
 
+    /// Tail of the job pod's logs, captured once the job is terminal.
+    ///
+    /// The pod lives and dies with its Job, and the operator prunes terminal
+    /// job CRs. Without this, the only evidence of a failed module update —
+    /// the SQL error, the migration traceback — is gone before anyone can
+    /// read it. Bounded so the CRD stays small.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub log_tail: Option<String>,
+
     #[serde(default)]
     pub original_replicas: i32,
 
