@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.0.1](https://github.com/XtremXpert/odoo-operator/compare/v3.0.0...v3.0.1) (2026-11-14)
+
+
+### Bug Fixes
+
+* **controller:** passer un entier, pas un pourcentage, à maxUnavailable ([6604df4](https://github.com/XtremXpert/odoo-operator/commit/6604df4c80865ea1c5debab9b303b39defce905b))
+* **controller:** passer un entier, pas un pourcentage, à maxUnavailable ([2a7fe3e](https://github.com/XtremXpert/odoo-operator/commit/2a7fe3eae2809d0af5d84b3439033e8496eff502))
+
 ## [3.0.0](https://github.com/XtremXpert/odoo-operator/compare/v2.9.1...v3.0.0) (2026-11-14)
 
 
