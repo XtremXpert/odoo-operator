@@ -418,6 +418,33 @@ impl ReconcileSnapshot {
         )
         .await;
 
+        // ── Capture du journal des jobs terminés ──────────
+        // Le pod d'un job disparaît avec son Job, et l'opérateur élague les CR
+        // terminés : sans cette capture, la seule preuve d'une mise à jour de
+        // modules ratée — l'erreur SQL, la trace de migration — a disparu avant
+        // qu'on puisse la lire. Constaté le 2026-11-14 : une alerte
+        // « TracebackOdoo » a sonné sans qu'aucun journal ne subsiste.
+        //
+        // Une seule fois par CR : le champ est ensuite présent.
+        if matches!(upgrade_job, JobStatus::Succeeded | JobStatus::Failed) {
+            if let Some(job_cr) = active_upgrade_job.as_ref() {
+                let deja = job_cr
+                    .status
+                    .as_ref()
+                    .and_then(|s| s.log_tail.as_deref())
+                    .is_some();
+                if !deja {
+                    let cr_name = job_cr.metadata.name.clone();
+                    let batch_job = job_cr.status.as_ref().and_then(|s| s.job_name.clone());
+                    if let (Some(cr_name), Some(batch_job)) = (cr_name, batch_job) {
+                        if let Some(tail) = capture_job_log_tail(client, ns, &batch_job).await {
+                            store_upgrade_job_log_tail(client, ns, &cr_name, tail).await;
+                        }
+                    }
+                }
+            }
+        }
+
         // ── Volume mount health ───────────────────────────────────────
         // A pod that can't mount its filestore PVC sits indefinitely in
         // ContainerCreating while kubelet retries.  We surface this by
@@ -1926,3 +1953,89 @@ use super::states::finalizing_database_migration::{
     clear_database_migration_status, complete_database_migration,
 };
 use super::states::migrating_database::{begin_database_migration, rollback_database_migration};
+
+/// Lit la queue des journaux des pods d'un job terminé.
+///
+/// Le pod existe encore à cet instant : c'est la seule fenêtre. Rend les
+/// dernières lignes, bornées, ou `None` s'il n'y a plus rien à lire.
+async fn capture_job_log_tail(client: &Client, ns: &str, job_name: &str) -> Option<String> {
+    use k8s_openapi::api::core::v1::Pod;
+    use kube::api::LogParams;
+
+    let pods: Api<Pod> = Api::namespaced(client.clone(), ns);
+    let liste = pods
+        .list(&ListParams::default().labels(&format!("job-name={job_name}")))
+        .await
+        .ok()?;
+    let mut journal = String::new();
+    for pod in liste.items {
+        let Some(nom) = pod.metadata.name.clone() else {
+            continue;
+        };
+        let params = LogParams {
+            tail_lines: Some(400),
+            ..Default::default()
+        };
+        if let Ok(texte) = pods.logs(&nom, &params).await {
+            journal.push_str(&texte);
+        }
+    }
+    if journal.trim().is_empty() {
+        return None;
+    }
+    Some(tronque_queue(&journal, 60_000))
+}
+
+/// Écrit la queue du journal dans le statut du CR d'upgrade.
+///
+/// Merge patch sur `status.logTail` seul : le statut du CR appartient aussi au
+/// portail, et un patch de fusion ne lui prend rien d'autre.
+async fn store_upgrade_job_log_tail(client: &Client, ns: &str, cr_name: &str, tail: String) {
+    let api: Api<OdooUpgradeJob> = Api::namespaced(client.clone(), ns);
+    let patch = json!({ "status": { "logTail": tail } });
+    if let Err(e) = api
+        .patch_status(cr_name, &PatchParams::default(), &Patch::Merge(&patch))
+        .await
+    {
+        tracing::warn!(%cr_name, error = %e, "could not store the upgrade job log tail");
+    }
+}
+
+/// Garde les `max` derniers octets d'un texte, sans couper un caractère.
+fn tronque_queue(texte: &str, max: usize) -> String {
+    if texte.len() <= max {
+        return texte.to_string();
+    }
+    let mut debut = texte.len() - max;
+    while debut < texte.len() && !texte.is_char_boundary(debut) {
+        debut += 1;
+    }
+    format!("…(tronqué)\n{}", &texte[debut..])
+}
+
+#[cfg(test)]
+mod tests_journal {
+    use super::tronque_queue;
+
+    #[test]
+    fn garde_le_texte_court_intact() {
+        assert_eq!(tronque_queue("court", 100), "court");
+    }
+
+    #[test]
+    fn garde_la_queue_et_marque_la_troncature() {
+        let texte = "a".repeat(50) + "FIN";
+        let queue = tronque_queue(&texte, 10);
+        assert!(queue.ends_with("FIN"));
+        assert!(queue.contains("tronqué"));
+        assert!(queue.len() < texte.len());
+    }
+
+    #[test]
+    fn ne_coupe_pas_un_caractere_multioctet() {
+        // Un caractère de 3 octets à cheval sur la limite ne doit pas être coupé.
+        let texte = format!("{}é", "x".repeat(9));
+        let queue = tronque_queue(&texte, 2);
+        assert!(queue.ends_with('é'));
+    }
+}
