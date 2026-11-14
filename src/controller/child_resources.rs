@@ -1573,17 +1573,57 @@ fn deployment_strategy(
             Some(RollingUpdateDeployment {
                 max_surge: strategy
                     .and_then(|s| s.rolling_update.as_ref())
-                    .map(|ru| IntOrString::String(ru.max_surge.clone())),
+                    .map(|ru| int_or_percent(&ru.max_surge)),
                 max_unavailable: strategy
                     .and_then(|s| s.rolling_update.as_ref())
-                    .map(|ru| IntOrString::String(ru.max_unavailable.clone())),
+                    .map(|ru| int_or_percent(&ru.max_unavailable)),
             }),
         ),
     }
 }
 
+/// Convertit une valeur de stratégie en entier ou en pourcentage.
+///
+/// La CRD déclare `maxSurge` / `maxUnavailable` en texte, parce que Kubernetes
+/// accepte les deux formes : `"1"` (un pod) ou `"25%"` (une proportion). Les
+/// passer telles quelles en `IntOrString::String` est un piège : Kubernetes lit
+/// **toute chaîne comme un pourcentage**, et refuse `"0"` — « a valid percent
+/// string must be a numeric string followed by an ending '%' ». Une instance en
+/// RollingUpdate ne pouvait alors plus être réconciliée du tout.
+///
+/// Constaté le 2026-11-14 sur cite/diverse-odoo avec maxUnavailable: "0".
+fn int_or_percent(valeur: &str) -> IntOrString {
+    let valeur = valeur.trim();
+    if valeur.ends_with('%') {
+        return IntOrString::String(valeur.to_string());
+    }
+    match valeur.parse::<i32>() {
+        Ok(nombre) => IntOrString::Int(nombre),
+        Err(_) => IntOrString::String(valeur.to_string()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    #[test]
+    fn max_unavailable_entier_n_est_pas_un_pourcentage() {
+        // « 0 » en texte doit devenir l'entier 0 : Kubernetes lit une chaîne
+        // comme un pourcentage et refuse « 0 ».
+        assert_eq!(int_or_percent("0"), IntOrString::Int(0));
+        assert_eq!(int_or_percent("1"), IntOrString::Int(1));
+        assert_eq!(int_or_percent(" 2 "), IntOrString::Int(2));
+    }
+
+    #[test]
+    fn un_pourcentage_reste_un_pourcentage() {
+        assert_eq!(
+            int_or_percent("25%"),
+            IntOrString::String("25%".to_string())
+        );
+    }
+
     use super::{deployment_strategy, master_password_line};
     use crate::crd::odoo_instance::{DeploymentStrategyType, RollingUpdateSpec, StrategySpec};
     use k8s_openapi::apimachinery::pkg::util::intstr::IntOrString;
@@ -1622,14 +1662,10 @@ mod tests {
         let (kind, rolling) = deployment_strategy(Some(&strategy));
         assert_eq!(kind, "RollingUpdate");
         let rolling = rolling.expect("rolling update strategy");
-        assert_eq!(
-            rolling.max_surge,
-            Some(IntOrString::String("1".to_string()))
-        );
-        assert_eq!(
-            rolling.max_unavailable,
-            Some(IntOrString::String("0".to_string()))
-        );
+        // Entiers, PAS des chaînes : Kubernetes lit toute chaîne comme un
+        // pourcentage et refuse « 0 » (constaté le 2026-11-14 en production).
+        assert_eq!(rolling.max_surge, Some(IntOrString::Int(1)));
+        assert_eq!(rolling.max_unavailable, Some(IntOrString::Int(0)));
     }
 
     #[test]
