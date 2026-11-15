@@ -563,6 +563,7 @@ spec:
                   type: string
                 nullable: true
                 type: object
+              cron:
                 default:
                   replicas: 1
                 properties:

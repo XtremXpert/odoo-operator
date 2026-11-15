@@ -47,16 +47,26 @@ impl State for Running {
         );
         if let Some(token) = requested_token {
             info!(%name, "rotating database password on request");
+            // Claim the token BEFORE touching the Secret, and refuse to go on if
+            // the claim did not stick.
+            //
+            // If the status write is dropped — field pruned by an older CRD, RBAC,
+            // API hiccup — the annotation still looks un-consumed on the next
+            // reconcile, and the operator would delete the Secret again and again:
+            // a rotation loop that regenerates the password and restarts Odoo on
+            // every tick. That is exactly what happened once in production, so
+            // this path is fail-closed: no persisted claim, no deletion.
+            claim_rotation_token(&ctx.client, ns, name, &token).await?;
+            if !rotation_claimed(&ctx.client, ns, name, &token).await? {
+                tracing::warn!(
+                    %name,
+                    "rotation NOT performed: the consumed token did not persist in \
+                     status.dbPasswordRotatedToken. Refusing to delete the Secret — \
+                     check that the CRD declares that status field."
+                );
+                return Ok(());
+            }
             delete_odoo_user_secret(&ctx.client, ns, name).await?;
-            let api: Api<OdooInstance> = Api::namespaced(ctx.client.clone(), ns);
-            api.patch_status(
-                name,
-                &PatchParams::apply(FIELD_MANAGER),
-                &Patch::Merge(&json!({
-                    "status": { "dbPasswordRotatedToken": token }
-                })),
-            )
-            .await?;
             // Return without scaling: the Secret must exist again before the
             // Deployments roll onto the new credentials. The next tick does it.
             return Ok(());
@@ -82,6 +92,46 @@ impl State for Running {
         }
         Ok(())
     }
+}
+
+/// Write the consumed rotation token into `status`, claiming the rotation.
+async fn claim_rotation_token(
+    client: &kube::Client,
+    ns: &str,
+    name: &str,
+    token: &str,
+) -> Result<()> {
+    let api: Api<OdooInstance> = Api::namespaced(client.clone(), ns);
+    api.patch_status(
+        name,
+        &PatchParams::apply(FIELD_MANAGER),
+        &Patch::Merge(&json!({
+            "status": { "dbPasswordRotatedToken": token }
+        })),
+    )
+    .await?;
+    Ok(())
+}
+
+/// Read `status.dbPasswordRotatedToken` back and tell whether the claim stuck.
+///
+/// A `patch_status` on a field the CRD does not declare is **accepted** and then
+/// silently pruned, so an error-free call proves nothing: only a successful
+/// read-back does. This is the check that turns a would-be rotation loop into a
+/// refusal.
+async fn rotation_claimed(
+    client: &kube::Client,
+    ns: &str,
+    name: &str,
+    token: &str,
+) -> Result<bool> {
+    let api: Api<OdooInstance> = Api::namespaced(client.clone(), ns);
+    let instance = api.get(name).await?;
+    Ok(instance
+        .status
+        .as_ref()
+        .and_then(|s| s.db_password_rotated_token.as_deref())
+        == Some(token))
 }
 
 /// Return the rotation token when the annotation asks for a rotation this
