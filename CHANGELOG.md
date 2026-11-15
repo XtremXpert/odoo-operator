@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.1.0](https://github.com/XtremXpert/odoo-operator/compare/v3.0.1...v3.1.0) (2026-11-15)
+
+
+### Features
+
+* **controller:** rotate the database password from an annotation ([207f6e1](https://github.com/XtremXpert/odoo-operator/commit/207f6e1622767d4df477c6ef812bdcf93e30eae3))
+* **controller:** rotate the database password from an annotation ([a333569](https://github.com/XtremXpert/odoo-operator/commit/a3335693dc5a7a679b6bef25f8f4deb94a0fc65d))
+
 ## [3.0.1](https://github.com/XtremXpert/odoo-operator/compare/v3.0.0...v3.0.1) (2026-11-14)
 
 
