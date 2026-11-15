@@ -563,7 +563,6 @@ spec:
                   type: string
                 nullable: true
                 type: object
-              cron:
                 default:
                   replicas: 1
                 properties:
@@ -1050,6 +1049,10 @@ spec:
                 default: false
                 type: boolean
               dbMigrationJobName:
+                nullable: true
+                type: string
+              dbPasswordRotatedToken:
+                description: 'Token of the last `odoo.bemade.org/rotate-db-password` annotation the operator acted on. Rotation is idempotent: a token already recorded here is never rotated twice, so the annotation may be left on the object.'
                 nullable: true
                 type: string
               lastBackup:

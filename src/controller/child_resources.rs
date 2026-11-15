@@ -244,6 +244,31 @@ pub async fn ensure_odoo_user_secret(
     }
 }
 
+/// Delete the `<name>-odoo-user` Secret, which is what actually rotates the
+/// database password.
+///
+/// `ensure_odoo_user_secret` creates that Secret only when it is absent, so
+/// removing it is the whole rotation: the next reconcile generates a fresh
+/// password there, `ensure_postgres_role` pushes it to PostgreSQL and
+/// `ensure_odoo_conf_secret` re-renders `odoo.conf`, whose hash rolls both
+/// Deployments.
+///
+/// Deleting only `<name>-odoo-conf` rotates **nothing**: that Secret is derived
+/// from `<name>-odoo-user` and is recreated byte for byte, with the same
+/// password. A rotation implementation that removed just the conf Secret would
+/// report success while changing no credential at all.
+///
+/// Returns `true` when a Secret was deleted, `false` when none existed.
+pub async fn delete_odoo_user_secret(client: &Client, ns: &str, name: &str) -> Result<bool> {
+    let secrets: Api<Secret> = Api::namespaced(client.clone(), ns);
+    let secret_name = format!("{name}-odoo-user");
+    match secrets.delete(&secret_name, &DeleteParams::default()).await {
+        Ok(_) => Ok(true),
+        Err(kube::Error::Api(ref e)) if e.code == 404 => Ok(false),
+        Err(e) => Err(e.into()),
+    }
+}
+
 /// Read the Odoo user credentials (username + password) from the instance's
 /// `-odoo-user` Secret.
 pub async fn read_odoo_credentials(
