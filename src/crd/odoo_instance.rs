@@ -552,6 +552,12 @@ pub struct OdooInstanceStatus {
     #[serde(default)]
     pub db_initialized: bool,
 
+    /// Token of the last `odoo.bemade.org/rotate-db-password` annotation the
+    /// operator acted on. Rotation is idempotent: a token already recorded here
+    /// is never rotated twice, so the annotation may be left on the object.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub db_password_rotated_token: Option<String>,
+
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
 
