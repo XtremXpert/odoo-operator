@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.1.1](https://github.com/XtremXpert/odoo-operator/compare/v3.1.0...v3.1.1) (2026-11-15)
+
+
+### Bug Fixes
+
+* **crd:** restore the `cron` key and make the rotation fail closed ([fe4b242](https://github.com/XtremXpert/odoo-operator/commit/fe4b2429a04f6762b4d84e9fd76e1a298b295078))
+* **crd:** restore the cron key and make the password rotation fail closed ([c801a30](https://github.com/XtremXpert/odoo-operator/commit/c801a30abd0ca5fa437a06fb1c4f7d6a27250ec2))
+
 ## [3.1.0](https://github.com/XtremXpert/odoo-operator/compare/v3.0.1...v3.1.0) (2026-11-15)
 
 
