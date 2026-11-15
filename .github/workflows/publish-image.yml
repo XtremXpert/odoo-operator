@@ -1,0 +1,67 @@
+name: Publish image
+
+# Release Please cuts a tag and a GitHub release, but nothing was building the
+# container image from it: releases went out with no artefact, and the operator
+# running in the cluster stayed on whatever tag had been pushed by hand. This
+# workflow closes that gap.
+
+on:
+  push:
+    tags:
+      # Release Please tags are `v<version>`.
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build and publish (e.g. v3.1.0)"
+        required: true
+        type: string
+
+# Reading the repository is enough; `packages: write` is what allows pushing to
+# ghcr.io with the workflow's own token.
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: publish-image-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  image:
+    name: Build and push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the tagged source
+        uses: actions/checkout@v4
+        with:
+          # On a `workflow_dispatch` run from master, `github.ref` is the branch,
+          # so the tag has to be named explicitly to build what was released.
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Resolve image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          # `github.repository` is `XtremXpert/odoo-operator`; the action
+          # lowercases it, which OCI tags require.
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=${{ inputs.tag || github.ref_name }}
+            type=raw,value=latest
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
